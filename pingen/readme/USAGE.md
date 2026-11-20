@@ -55,3 +55,8 @@ changing them. Uploaded letters that have not been sent yet are refreshed every
 A document uploaded with Send disabled is still sent by the scheduled action
 *Run Pingen Document Push* (hourly) unless that action is disabled. Use the
 *Ask pingen.com to send the document* button to send it earlier.
+
+## Daily update
+
+The daily update also removes the documents whose letter was deleted on
+Pingen, with their attachment unless it is linked to another record.
