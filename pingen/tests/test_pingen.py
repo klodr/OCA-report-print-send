@@ -398,6 +398,63 @@ class TestPingen(HttpCase):
         attachment.write({"send_to_pingen": True})
         return attachment.pingen_document_ids
 
+    def _run_push_cron(self, client):
+        with (
+            patch("odoo.addons.pingen.models.pingen_document.Registry") as registry,
+            patch.object(type(self.company), "_get_pingen_client", return_value=client),
+            patch.object(self.env.registry["pingen.document"], "_refresh_letter_infos"),
+        ):
+            # Reuse the test transaction so the cron sees uncommitted documents.
+            cursor = registry.return_value.cursor.return_value
+            cursor.__enter__.return_value = self.env.cr
+            # Never swallow an exception raised inside the cron.
+            cursor.__exit__.return_value = False
+            self.env["pingen.document"]._push_and_send_to_pingen_cron()
+        self.env.invalidate_all()
+
+    def test_push_cron_never_sends_pushed_documents(self):
+        for auto_send in (False, True):
+            with self.subTest(auto_send=auto_send):
+                document = self._pushed_document()
+                document.auto_send = auto_send
+                client = MagicMock()
+                self._run_push_cron(client)
+                client.send_document.assert_not_called()
+                client.push_document.assert_not_called()
+                self.assertEqual(document.state, "pushed")
+
+    def test_push_cron_uploads_without_auto_send(self):
+        for auto_send in (True, False):
+            with self.subTest(auto_send=auto_send):
+                document = self._layout_document()
+                document.auto_send = auto_send
+                client = MagicMock()
+                client.push_document.return_value = (
+                    "L1",
+                    False,
+                    {"status": "validating"},
+                )
+                self._run_push_cron(client)
+                client.push_document.assert_called_once()
+                self.assertIs(client.push_document.call_args.args[3], False)
+                client.send_document.assert_not_called()
+                self.assertEqual(document.state, "pushed")
+                self.assertFalse(document.auto_send)
+
+    def test_manual_push_preserves_auto_send(self):
+        document = self._layout_document()
+        document.auto_send = True
+        client = MagicMock()
+        client.push_document.return_value = ("L1", False, {"status": "validating"})
+        with (
+            patch.object(type(self.company), "_get_pingen_client", return_value=client),
+            patch.object(type(document), "_refresh_letter_infos"),
+        ):
+            document.push_to_pingen()
+        client.push_document.assert_called_once()
+        self.assertIs(client.push_document.call_args.args[3], True)
+        self.assertTrue(document.auto_send)
+
     def test_layout_error_prevents_upload(self):
         document = self._layout_document(restricted=True)
         client = MagicMock()
