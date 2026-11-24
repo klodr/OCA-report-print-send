@@ -52,10 +52,9 @@ selected delivery and printing options; refresh the letter information after
 changing them. Uploaded letters that have not been sent yet are refreshed every
 hour. The actual cost appears after sending.
 
-The hourly *Run Pingen Document Push* action uploads pending documents without
-ever sending them, even when *Auto Send* is checked; it then unchecks that option.
-Sending always requires the *Ask pingen.com to send the document* button or a
-manual push with *Auto Send* checked.
+A document uploaded with Send disabled is still sent by the scheduled action
+*Run Pingen Document Push* (hourly) unless that action is disabled. Use the
+*Ask pingen.com to send the document* button to send it earlier.
 
 ## Daily update
 

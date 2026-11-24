@@ -58,8 +58,7 @@ class PingenDocument(models.Model):
         default="pending",
     )
     auto_send = fields.Boolean(
-        help="Send the document when uploading it with the manual push button. "
-        "The scheduled action only uploads documents and never sends them.",
+        help="Defines if a document is merely uploaded or also sent",
         default=True,
     )
     delivery_product = fields.Selection(
@@ -157,10 +156,9 @@ class PingenDocument(models.Model):
             else:
                 attachment.exists().unlink()
 
-    def _push_to_pingen(self, pingen=None, send=None):
+    def _push_to_pingen(self, pingen=None):
         """Push a document to pingen.com
         :param Pingen pingen: optional pingen object to reuse session
-        :param bool send: override auto_send when provided
         """
         decoded_document = self.attachment_id._decoded_content()
         violations = find_restricted_content(
@@ -207,7 +205,7 @@ class PingenDocument(models.Model):
                 self.name,
                 BytesIO(decoded_document),
                 self.attachment_id.mimetype,
-                self.auto_send if send is None else send,
+                self.auto_send,
                 self.delivery_product,
                 self.print_spectrum,
                 self.print_mode,
@@ -300,10 +298,10 @@ class PingenDocument(models.Model):
         return True
 
     def _push_and_send_to_pingen_cron(self):
-        """Upload pending documents only; sending always requires manual action.
-
-        Intended to be used in a cron. Store errors on the document instead
-        of raising them, so other documents can still be processed.
+        """Push a document to pingen.com
+        Intended to be used in a cron.
+        Commit after each record
+        Instead of raising, store the error in the pingen.document
         """
         with Registry(self.env.cr.dbname).cursor() as new_cr:
             new_env = api.Environment(new_cr, self.env.uid, self.env.context)
@@ -320,9 +318,9 @@ class PingenDocument(models.Model):
                         document.invalidate_recordset()
                     try:
                         if document.state == "pending":
-                            document._push_to_pingen(pingen=session, send=False)
-                            if document.auto_send:
-                                document.auto_send = False
+                            document._push_to_pingen(pingen=session)
+                        elif document.state == "pushed" and not document.auto_send:
+                            document._ask_pingen_send(pingen=session)
                     except OAuth2Error as e:
                         document.write({"last_error_message": e, "state": "error"})
                     except APIError as e:
